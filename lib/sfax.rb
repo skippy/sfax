@@ -4,6 +4,7 @@ require 'sfax/path'
 require 'sfax/version'
 require 'faraday'
 require 'json'
+require 'uri'
 
 module SFax
   class Faxer
@@ -23,25 +24,37 @@ module SFax
     end
 
     # Accepts the file to send and sends it to fax_number.
-    def send_fax(fax_number, file, name = "")
-      return if file.nil? || fax_number.nil?
+    def send_fax_raw(fax_number, file_or_body, name = "")
+      return if file_or_body.nil? || fax_number.nil?
 
       connection = SFax::Connection.outgoing
       fax = fax_number[-11..-1] || fax_number
 
       path = @path.send_fax(fax, name)
+      body = file_or_body
+      begin
+        uri = URI.parse(file_or_body)
+        body = open(uri.to_s)
+      rescue URI::InvalidURIError
+        # nothing to do
+      end
       response = connection.post path do |req|
         req.body = {}
-        req.body['file'] = Faraday::UploadIO.new(open(file), 
+        req.body['file'] = Faraday::UploadIO.new(body,
           'application/pdf', "#{Time.now.utc.iso8601}.pdf")
       end
 
-      parsed = JSON.parse(response.body)
-      fax_id = (parsed['SendFaxQueueId'] != -1) ? parsed['SendFaxQueueId'] : nil
+      JSON.parse(response.body)
+    end
+
+
+    def send_fax(fax_number, file_or_body, name='')
+      resp = send_fax_raw(fax_number, file_or_body, name)
+      (resp['SendFaxQueueId'] != -1) ? resp['SendFaxQueueId'] : nil
     end
 
     # Checks the status (Success, Failure etc.) of the fax with fax_id.
-    def fax_status(fax_id)
+    def fax_status_raw(fax_id)
       return if fax_id.nil?
 
       connection = SFax::Connection.incoming
@@ -49,13 +62,17 @@ module SFax
       response = connection.get path do |req|
         req.body = {}
       end
+      JSON.parse(response.body)
+    end
 
-      parsed_response = JSON.parse(response.body)
-      status_items = parsed_response['RecipientFaxStatusItems'] || []
+    def fax_status(fax_id)
+      resp = fax_status_raw(fax_id)
+      status_items = resp['RecipientFaxStatusItems'] || []
       success_fax_id = status_items.first['SendFaxQueueId'] unless status_items.empty?
-      is_success = parsed_response['isSuccess'] ? true : false
+      is_success = resp['isSuccess'] ? true : false
       return success_fax_id, is_success
     end
+
 
     # If there are any received faxes, returns an array of fax_ids for those faxes.
     def receive_fax(count)
