@@ -9,16 +9,12 @@ This gem is a ruby wrapper around the SFax API. With this gem, you can easily se
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'sfax'
+gem 'sfax', :git => 'https://github.com/PatientBank/sfax'
 ```
 
 And then execute:
 
     $ bundle install
-
-Or install it yourself as:
-
-    $ gem install sfax
 
 ## Usage
 
